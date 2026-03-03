@@ -103,8 +103,8 @@ body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--t
   /* Galaxy mobile */
   .galaxy-canvas-wrap{height:450px}
   .galaxy-header{padding:.5rem .8rem;flex-direction:column;align-items:flex-start}
-  .galaxy-sort-btns{flex-wrap:wrap}
-  .galaxy-sort-btn{padding:.3rem .5rem;font-size:.42rem}
+  .galaxy-sort-btns{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:.2rem;padding-bottom:.3rem}
+  .galaxy-sort-btn{padding:.25rem .4rem;font-size:.38rem;white-space:nowrap;flex-shrink:0}
   .galaxy-filters{width:100%;flex-wrap:wrap}
   .galaxy-filters select{font-size:.75rem;padding:.3rem}
   /* Modal mobile */
@@ -145,6 +145,30 @@ body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--t
   .badge{font-size:.62rem;padding:.15rem .35rem}
   .phase-badge{font-size:.62rem;padding:.1rem .3rem}
 }
+/* ── Mobile portrait Galaxy fixes ── */
+@media(max-width:768px){
+  .galaxy-info-panel{width:100%!important;left:0;border-left:none;border-top:2px solid var(--mint);z-index:4}
+  .galaxy-analytics{padding:.8rem .6rem}
+  .ga-chart{padding:.7rem}
+  .ga-bar-row{gap:.3rem;font-size:.72rem}
+  .ga-bar-label{min-width:40px;font-size:.6rem}
+  .ga-bar-val-out{font-size:.65rem}
+}
+@media(max-width:768px) and (orientation:portrait){
+  .galaxy-rotate-hint{display:flex!important}
+}
+@media(max-width:768px) and (orientation:landscape){
+  .galaxy-rotate-hint{display:none!important}
+  .galaxy-canvas-wrap{height:85vh!important}
+}
+.galaxy-rotate-hint{
+  display:none;position:absolute;bottom:40px;left:50%;transform:translateX(-50%);
+  z-index:6;background:rgba(0,228,124,.15);border:1px solid var(--mint);border-radius:6px;
+  padding:6px 14px;gap:6px;align-items:center;
+  font-family:'Press Start 2P',monospace;font-size:.5rem;color:var(--mint);
+  pointer-events:none;white-space:nowrap;animation:rotateHintPulse 2s ease-in-out infinite;
+}
+@keyframes rotateHintPulse{0%,100%{opacity:.7}50%{opacity:1}}
 .field label{display:flex;align-items:center;font-size:.85rem;font-weight:600;margin-bottom:.3rem;color:var(--text-light)}
 .field input,.field select{
   width:100%;padding:.6rem .8rem;border:2px solid var(--border);border-radius:4px;
@@ -701,6 +725,7 @@ th .col-hide-btn{float:right;margin-top:1px}
       <div class="galaxy-canvas-wrap" id="galaxyCanvasWrap">
         <canvas id="galaxyCanvas"></canvas>
         <div id="galaxyStatus" style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:.62rem;font-family:'Press Start 2P',monospace;color:rgba(0,228,124,.7);background:rgba(0,0,0,.55);padding:3px 12px;border-radius:4px;white-space:nowrap;pointer-events:none;z-index:5;letter-spacing:.3px"></div>
+        <div class="galaxy-rotate-hint">📱↻ Rotate for better view</div>
         <div class="galaxy-zoom-controls">
           <button class="galaxy-zoom-btn" onclick="galaxyZoom(1.3)" title="Zoom In">+</button>
           <button class="galaxy-zoom-btn" onclick="galaxyZoom(1/1.3)" title="Zoom Out">−</button>
@@ -1353,6 +1378,19 @@ const DISAMBIGUATION={
 /* Currently active disambiguation choice (null = no filter, or {termKey, choiceId}) */
 let _activeDisambig=null;
 
+/* Cached search text per study for fast disambiguation filtering */
+const _disambigTextCache=new WeakMap();/* rawStudy → lowercase combined text */
+function _getDisambigText(s){
+  let txt=_disambigTextCache.get(s);
+  if(txt!==undefined)return txt;
+  const proto=s.protocolSection||{};
+  txt=((proto.conditionsModule||{}).conditions||[]).join(' ').toLowerCase()+' '+
+      ((proto.identificationModule||{}).briefTitle||'').toLowerCase()+' '+
+      ((proto.descriptionModule||{}).briefSummary||'').toLowerCase();
+  _disambigTextCache.set(s,txt);
+  return txt;
+}
+
 /* Post-search filter: keep ONLY studies matching the chosen meaning's keywords */
 function filterExcludedConditions(studies,searchTerm){
   if(!searchTerm||!_activeDisambig)return studies;
@@ -1360,16 +1398,10 @@ function filterExcludedConditions(studies,searchTerm){
   if(_activeDisambig.termKey!==key)return studies;
   const disambig=DISAMBIGUATION[key];
   if(!disambig)return studies;
-  /* Find the chosen meaning */
   const chosen=disambig.choices.find(c=>c.id===_activeDisambig.choiceId);
-  if(!chosen||chosen.keywords.length===0)return studies; /* "all" = no filter */
-  /* INCLUDE-based: keep only studies that match at least one keyword of chosen meaning */
+  if(!chosen||chosen.keywords.length===0)return studies;
   return studies.filter(s=>{
-    const proto=s.protocolSection||{};
-    const conds=((proto.conditionsModule||{}).conditions||[]).join(' ').toLowerCase();
-    const title=((proto.identificationModule||{}).briefTitle||'').toLowerCase();
-    const desc=((proto.descriptionModule||{}).briefSummary||'').toLowerCase();
-    const combined=conds+' '+title+' '+desc;
+    const combined=_getDisambigText(s);
     return chosen.keywords.some(kw=>combined.includes(kw));
   });
 }
@@ -1380,17 +1412,16 @@ function needsDisambiguation(termKey,studies){
   if(!disambig)return false;
   const realChoices=disambig.choices.filter(c=>c.keywords.length>0);
   if(realChoices.length<2)return false;
-  /* Count how many distinct meanings appear in the results */
-  let meaningsFound=0;
-  for(const choice of realChoices){
-    const hasMatch=studies.some(s=>{
-      const p=s.protocolSection||{};
-      const txt=((p.conditionsModule||{}).conditions||[]).join(' ').toLowerCase()+' '+((p.identificationModule||{}).briefTitle||'').toLowerCase();
-      return choice.keywords.some(kw=>txt.includes(kw));
-    });
-    if(hasMatch)meaningsFound++;
+  /* Single-pass: scan studies once, check all choices simultaneously */
+  const found=new Set();
+  for(const s of studies){
+    const txt=_getDisambigText(s);
+    for(const choice of realChoices){
+      if(!found.has(choice.id)&&choice.keywords.some(kw=>txt.includes(kw)))found.add(choice.id);
+    }
+    if(found.size>=2)return true;/* early exit */
   }
-  return meaningsFound>=2; /* Only show banner if 2+ meanings present */
+  return false;
 }
 
 /* Show disambiguation banner above results */
@@ -1407,15 +1438,15 @@ function showDisambiguationBanner(termKey,studies){
     resultsArea.insertBefore(bar,resultsArea.firstChild);
   }
   bar.style.display='block';
-  /* Count per choice for display */
+  /* Count per choice in single pass (O(N) instead of O(N×C)) */
+  const realChoicesForCount=disambig.choices.filter(c=>c.keywords.length>0);
   const choiceCounts=new Map();
-  disambig.choices.filter(c=>c.keywords.length>0).forEach(c=>{
-    const cnt=(studies||[]).filter(s=>{
-      const p=s.protocolSection||{};
-      const txt=((p.conditionsModule||{}).conditions||[]).join(' ').toLowerCase()+' '+((p.identificationModule||{}).briefTitle||'').toLowerCase();
-      return c.keywords.some(kw=>txt.includes(kw));
-    }).length;
-    choiceCounts.set(c.id,cnt);
+  realChoicesForCount.forEach(c=>choiceCounts.set(c.id,0));
+  (studies||[]).forEach(s=>{
+    const txt=_getDisambigText(s);
+    realChoicesForCount.forEach(c=>{
+      if(c.keywords.some(kw=>txt.includes(kw)))choiceCounts.set(c.id,choiceCounts.get(c.id)+1);
+    });
   });
   let html=`<div style="color:var(--mint);font-weight:bold;margin-bottom:6px">⚠ ${escHtml(disambig.prompt)}</div><div style="display:flex;flex-wrap:wrap;gap:6px">`;
   disambig.choices.forEach(c=>{
@@ -1433,25 +1464,43 @@ function hideDisambiguationBanner(){
   if(bar)bar.style.display='none';
 }
 
+/* Cache: raw study → parsed result (avoid re-parsing on disambig switch) */
+const _parsedCache=new WeakMap();
+function parseStudiesCached(studies){
+  const results=[];
+  const toParse=[];
+  studies.forEach(s=>{
+    const cached=_parsedCache.get(s);
+    if(cached){results.push(cached);}else{toParse.push(s);}
+  });
+  if(toParse.length>0){
+    const newParsed=parseStudies(toParse);
+    newParsed.forEach((r,i)=>{_parsedCache.set(toParse[i],r);results.push(r);});
+  }
+  return results;
+}
+
 /* User clicked a disambiguation choice → re-filter & re-render */
 function selectDisambig(termKey,choiceId){
   _activeDisambig={termKey,choiceId};
-  /* Re-run filter on current raw data */
   const exKey=termKey;
-  const filtered=filterExcludedConditions(allRawStudies.length>0?allRawStudies:(rawStudies||[]),exKey);
+  const source=allRawStudies.length>0?allRawStudies:(rawStudies||[]);
+  const filtered=filterExcludedConditions(source,exKey);
   rawStudies=filtered;
-  allResults=parseStudies(filtered);
+  /* Use cached parse results — only parse new studies */
+  allResults=parseStudiesCached(filtered);
   allResults.sort((a,b)=>(b.lastUpdate||'').localeCompare(a.lastUpdate||''));
   renderTable();
-  /* Background fetch MoA from RxClass API for unknown drugs */
+  /* MoA fetch — only for drugs not yet cached */
   const allDrugNames=allResults.flatMap(r=>r.drug?r.drug.split(', ').filter(Boolean):[]);
   batchFetchMoA(allDrugNames);
   const totalCount=allRawStudies.length||filtered.length;
-  const origCount=allRawStudies.length>0?allRawStudies.length:(rawStudies||[]).length;
+  const origCount=source.length;
   const exNote=origCount>filtered.length?` (${origCount-filtered.length} excluded)`:'';
   document.getElementById('resultsCount').innerHTML=`Showing ${allResults.length} of <strong>${totalCount.toLocaleString()}</strong> total${exNote}`;
-  renderGalaxy();
-  showDisambiguationBanner(termKey,allRawStudies.length>0?allRawStudies:(rawStudies||[])); /* re-render to update active state */
+  /* Defer heavy Galaxy rebuild */
+  requestAnimationFrame(()=>{renderGalaxy();});
+  showDisambiguationBanner(termKey,source);
 }
 
 /* Local synonym lookup (instant) */
@@ -2329,6 +2378,13 @@ function renderPhaseBlackHole(){
   lh+='</div>';lEl.innerHTML=lh;
   let hovPh=null,time=0;
   if(galaxyAnimId){cancelAnimationFrame(galaxyAnimId);galaxyAnimId=null;}
+  /* Cache DOM queries outside draw loop for perf */
+  const _cachedPhaseChks=document.querySelectorAll('.phase-checks input:checked');
+  const _cachedPhStr=_cachedPhaseChks.length>0?[..._cachedPhaseChks].map(c=>c.value==='EARLY_PHASE1'?'E1':c.value.replace('PHASE','')).join(','):'All';
+  const _cachedCountryEl=document.getElementById('country');
+  const _cachedCVal=_cachedCountryEl?_cachedCountryEl.value:'';
+  const _cachedQEl=document.getElementById('query');
+  const _cachedQVal=_cachedQEl?_cachedQEl.value.trim():'';
   function draw(){
     time+=.01;ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
     /* Background */
@@ -2543,18 +2599,14 @@ function renderPhaseBlackHole(){
     const scX=10,scY=14;
     ctx.font="bold 10px 'Press Start 2P',monospace";ctx.textAlign='left';
     ctx.fillStyle='rgba(255,200,100,.9)';ctx.fillText('SEARCH',scX,scY);
-    const qEl=document.getElementById('query');const qVal=qEl?qEl.value.trim():'';
     const statusFLabel=statusFilter==='ongoing'?'Ongoing':'All Status';
     const timeFLabel=timeFilter>0?(timeFilter<1?`≤${Math.round(timeFilter*12)}mo`:`≤${timeFilter}yr`):'Any';
     ctx.font="bold 13px 'Segoe UI',sans-serif";ctx.fillStyle='#00E47C';
-    ctx.fillText(qVal||'(all)',scX,scY+18);
+    ctx.fillText(_cachedQVal||'(all)',scX,scY+18);
     ctx.font="bold 11px 'Segoe UI',sans-serif";ctx.fillStyle='rgba(255,255,255,.85)';
     ctx.fillText(`Status: ${statusFLabel} · Updated: ${timeFLabel}`,scX,scY+36);
-    /* Phase/country info */
-    const phaseChks=document.querySelectorAll('.phase-checks input:checked');
-    const phStr=phaseChks.length>0?[...phaseChks].map(c=>c.value==='EARLY_PHASE1'?'E1':c.value.replace('PHASE','')).join(','):'All';
-    const countryEl=document.getElementById('country');const cVal=countryEl?countryEl.value:'';
-    ctx.fillText(`Phase: ${phStr} · Country: ${cVal||'All'}`,scX,scY+52);
+    /* Phase/country info (cached outside draw loop) */
+    ctx.fillText(`Phase: ${_cachedPhStr} · Country: ${_cachedCVal||'All'}`,scX,scY+52);
     ctx.restore();ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
     /* Vignette (screen space) */
     const vig=ctx.createRadialGradient(gW/2,gH/2,gW*.25,gW/2,gH/2,gW*.7);
@@ -4890,7 +4942,7 @@ function getAIProvider(){return localStorage.getItem('ctAlert_aiProvider')||'ope
 function setAIProvider(p){localStorage.setItem('ctAlert_aiProvider',p);}
 function getAIKey(provider){const p=provider||getAIProvider();return localStorage.getItem('ctAlert_aiKey_'+p)||'';}
 function setAIKey(k,provider){const p=provider||getAIProvider();localStorage.setItem('ctAlert_aiKey_'+p,k);}
-let _aiMatchCache={};
+let _aiMatchCache={};const _AI_CACHE_MAX=50;
 
 async function callLLMAPI(systemPrompt,userContent){
   const provider=getAIProvider();
@@ -4988,6 +5040,7 @@ ${t.secondary.map((c,j)=>`[${j}] ${c}`).join('\n')||'(none)'}`;
   const raw=await callLLMAPI(AI_SYSTEM_PROMPT,userContent);
   const jsonStr=raw.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
   const result=JSON.parse(jsonStr);
+  const keys=Object.keys(_aiMatchCache);if(keys.length>=_AI_CACHE_MAX)delete _aiMatchCache[keys[0]];
   _aiMatchCache[cacheKey]=result;
   return result;
 }
