@@ -145,8 +145,10 @@ body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--t
   .badge{font-size:.62rem;padding:.15rem .35rem}
   .phase-badge{font-size:.62rem;padding:.1rem .3rem}
 }
-/* ── Mobile portrait Galaxy fixes ── */
+/* ── Mobile Galaxy: hide inline, show fullscreen button ── */
 @media(max-width:768px){
+  .galaxy-wrap.show{display:none!important}
+  .galaxy-mobile-btn{display:flex!important}
   .galaxy-info-panel{width:100%!important;left:0;border-left:none;border-top:2px solid var(--mint);z-index:4}
   .galaxy-analytics{padding:.8rem .6rem}
   .ga-chart{padding:.7rem}
@@ -154,13 +156,48 @@ body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--t
   .ga-bar-label{min-width:40px;font-size:.6rem}
   .ga-bar-val-out{font-size:.65rem}
 }
-@media(max-width:768px) and (orientation:portrait){
-  .galaxy-rotate-hint{display:flex!important}
+.galaxy-mobile-btn{
+  display:none;align-items:center;justify-content:center;gap:.8rem;
+  padding:1rem;margin-bottom:1rem;border-radius:6px;cursor:pointer;
+  background:linear-gradient(135deg,#001018 0%,#002E3B 100%);
+  border:2px solid var(--mint);box-shadow:0 0 15px rgba(0,228,124,.15);
+  transition:all .2s;
 }
-@media(max-width:768px) and (orientation:landscape){
-  .galaxy-rotate-hint{display:none!important}
-  .galaxy-canvas-wrap{height:85vh!important}
+.galaxy-mobile-btn:hover{box-shadow:0 0 25px rgba(0,228,124,.3);border-color:#00ff88}
+.galaxy-mobile-btn .gm-icon{font-size:2rem}
+.galaxy-mobile-btn .gm-text{font-family:'Press Start 2P',monospace;font-size:.6rem;color:var(--mint);line-height:1.6}
+.galaxy-mobile-btn .gm-sub{font-family:'Segoe UI',sans-serif;font-size:.75rem;color:rgba(255,255,255,.55)}
+/* Galaxy fullscreen overlay (mobile) */
+.galaxy-fullscreen-overlay{
+  position:fixed;inset:0;z-index:10000;background:#000d14;
+  display:flex;flex-direction:column;
 }
+.galaxy-fullscreen-overlay .gfs-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.4rem .6rem;background:var(--dark);border-bottom:2px solid var(--mint);
+  flex-shrink:0;gap:.3rem;overflow-x:auto;
+}
+.galaxy-fullscreen-overlay .gfs-close{
+  background:rgba(255,107,107,.2);border:1px solid rgba(255,107,107,.4);
+  color:#FF6B6B;width:28px;height:28px;border-radius:50%;cursor:pointer;
+  font-size:1rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.galaxy-fullscreen-overlay .gfs-modes{
+  display:flex;gap:.2rem;overflow-x:auto;flex:1;
+}
+.galaxy-fullscreen-overlay .gfs-mode-btn{
+  padding:.3rem .5rem;border:1px solid rgba(0,228,124,.3);border-radius:3px;
+  background:transparent;color:rgba(255,255,255,.7);cursor:pointer;
+  font-family:'Press Start 2P',monospace;font-size:.4rem;white-space:nowrap;
+}
+.galaxy-fullscreen-overlay .gfs-mode-btn.active{background:var(--mint);color:var(--dark);border-color:var(--mint)}
+.galaxy-fullscreen-overlay .gfs-filters{
+  display:flex;gap:.3rem;align-items:center;flex-shrink:0;
+}
+.galaxy-fullscreen-overlay .gfs-body{
+  flex:1;position:relative;overflow:hidden;
+}
+.galaxy-fullscreen-overlay .gfs-body canvas{width:100%;height:100%;display:block}
 .galaxy-rotate-hint{
   display:none;position:absolute;bottom:40px;left:50%;transform:translateX(-50%);
   z-index:6;background:rgba(0,228,124,.15);border:1px solid var(--mint);border-radius:6px;
@@ -685,6 +722,11 @@ th .col-hide-btn{float:right;margin-top:1px}
 
   <div id="resultsArea" style="display:none">
     <!-- Galaxy View -->
+    <!-- Mobile: tap to open Galaxy fullscreen -->
+    <div class="galaxy-mobile-btn" id="galaxyMobileBtn" onclick="openGalaxyFullscreen()">
+      <span class="gm-icon">🌌</span>
+      <div><div class="gm-text">OPEN GALAXY MAP</div><div class="gm-sub">Tap to explore in fullscreen</div></div>
+    </div>
     <div class="galaxy-wrap" id="galaxyWrap">
       <div class="galaxy-header">
         <h3>MOLECULE GALAXY MAP</h3>
@@ -2168,7 +2210,7 @@ function renderICD10Badges(containerId,conditions){
 async function openDetail(idx){const nctId=allResults[idx].nctId;document.getElementById('modalTitle').textContent=`${nctId} - ${allResults[idx].title}`;document.getElementById('modalBody').innerHTML='<div class="modal-loading"><div class="spinner"></div><p>Loading details...</p></div>';document.getElementById('modalOverlay').classList.add('active');document.body.style.overflow='hidden';try{const resp=await fetch(`https://clinicaltrials.gov/api/v2/studies/${nctId}?format=json`);if(!resp.ok)throw new Error('Failed');renderDetail(await resp.json());}catch(err){document.getElementById('modalBody').innerHTML=`<p style="color:var(--danger)">Failed to load details: ${err.message}</p>`;}}
 function closeModal(){document.getElementById('modalOverlay').classList.remove('active');document.body.style.overflow='';if(detailMap){detailMap.remove();detailMap=null;}}
 function toggleFacilityList(cid,country){const el=document.getElementById(cid);const arrow=document.getElementById('arrow_'+cid);if(!el)return;if(el.style.display==='none'){el.style.display='block';if(arrow){arrow.classList.add('open');arrow.textContent='▶';}if(country)zoomToCountry(country,null);}else{el.style.display='none';if(arrow){arrow.classList.remove('open');arrow.textContent='▶';}}}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(_galaxyFullscreenActive)closeGalaxyFullscreen();else closeModal();}});
 
 /* ── Publications / References section for trial detail ── */
 function renderPublicationsSection(refsMod,nctId,title){
@@ -2280,13 +2322,109 @@ function galaxyZoom(factor){gZoom=Math.max(.3,Math.min(5,gZoom*factor));}
 function galaxyResetView(){gZoom=1;gPanX=0;gPanY=0;}
 function setGalaxySort(mode,btn){galaxySortMode=mode;document.querySelectorAll('.galaxy-sort-btn').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');galaxyResetView();renderGalaxy();}
 
+/* ── Mobile Galaxy Fullscreen Overlay ── */
+let _galaxyFullscreenActive=false;
+function openGalaxyFullscreen(){
+  if(_galaxyFullscreenActive)return;
+  _galaxyFullscreenActive=true;
+  /* Force landscape hint */
+  try{if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});}catch(e){}
+  const modes=[
+    {key:'phase',label:'PHASE'},
+    {key:'molecule',label:'MOLECULES'},
+    {key:'sponsor',label:'SPONSORS'},
+    {key:'country',label:'WORLD MAP'},
+    {key:'trends',label:'TIME WARP'},
+    {key:'enrollment',label:'HEADCOUNT'},
+    {key:'failure',label:'GRAVEYARD'},
+    {key:'funnel',label:'FUNNEL'},
+    {key:'compare',label:'HEAD-TO-HEAD'},
+    {key:'studytype',label:'STUDY TYPE'}
+  ];
+  const ov=document.createElement('div');
+  ov.className='galaxy-fullscreen-overlay';
+  ov.id='galaxyFullscreenOv';
+  /* Header */
+  const hdr=document.createElement('div');hdr.className='gfs-header';
+  const closeBtn=document.createElement('button');closeBtn.className='gfs-close';closeBtn.textContent='✕';
+  closeBtn.onclick=closeGalaxyFullscreen;
+  const modesDiv=document.createElement('div');modesDiv.className='gfs-modes';
+  modes.forEach(m=>{
+    const b=document.createElement('button');b.className='gfs-mode-btn'+(galaxySortMode===m.key?' active':'');
+    b.textContent=m.label;b.dataset.sort=m.key;
+    b.onclick=function(){
+      modesDiv.querySelectorAll('.gfs-mode-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      setGalaxySort(m.key,document.querySelector('.galaxy-sort-btn[data-sort="'+m.key+'"]'));
+      setTimeout(()=>_gfsResizeCanvas(),50);
+    };
+    modesDiv.appendChild(b);
+  });
+  /* Filters */
+  const filDiv=document.createElement('div');filDiv.className='gfs-filters';
+  const statusSel=document.getElementById('galaxyStatusFilter');
+  const timeSel=document.getElementById('galaxyTimeFilter');
+  const sClone=statusSel.cloneNode(true);sClone.id='gfsStatusFilter';
+  sClone.value=statusSel.value;
+  sClone.onchange=function(){statusSel.value=this.value;renderGalaxy();setTimeout(()=>_gfsResizeCanvas(),50);};
+  const tClone=timeSel.cloneNode(true);tClone.id='gfsTimeFilter';
+  tClone.value=timeSel.value;
+  tClone.onchange=function(){timeSel.value=this.value;renderGalaxy();setTimeout(()=>_gfsResizeCanvas(),50);};
+  filDiv.appendChild(sClone);filDiv.appendChild(tClone);
+  hdr.appendChild(closeBtn);hdr.appendChild(modesDiv);hdr.appendChild(filDiv);
+  /* Body — move existing galaxy internals */
+  const body=document.createElement('div');body.className='gfs-body';body.id='gfsBody';
+  ov.appendChild(hdr);ov.appendChild(body);
+  document.body.appendChild(ov);
+  /* Move canvas wrap + analytics + panel into overlay body */
+  const cw=document.getElementById('galaxyCanvasWrap');
+  const anEl=document.getElementById('galaxyAnalytics');
+  body.appendChild(cw);body.appendChild(anEl);
+  /* Ensure galaxy toggle is on */
+  const tog=document.getElementById('galaxyViewToggle');
+  if(!tog.checked){tog.checked=true;}
+  /* Show wrap class so renderGalaxy works */
+  document.getElementById('galaxyWrap').classList.add('show');
+  renderGalaxy();
+  setTimeout(()=>_gfsResizeCanvas(),100);
+  /* Resize listener */
+  window._gfsResizeHandler=()=>{if(_galaxyFullscreenActive)_gfsResizeCanvas();};
+  window.addEventListener('resize',window._gfsResizeHandler);
+}
+function _gfsResizeCanvas(){
+  const body=document.getElementById('gfsBody');
+  if(!body)return;
+  const canvas=document.getElementById('galaxyCanvas');
+  if(!canvas)return;
+  const rect=body.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  canvas.width=rect.width*dpr;canvas.height=rect.height*dpr;
+  canvas.style.width=rect.width+'px';canvas.style.height=rect.height+'px';
+  renderGalaxy();
+}
+function closeGalaxyFullscreen(){
+  _galaxyFullscreenActive=false;
+  if(window._gfsResizeHandler){window.removeEventListener('resize',window._gfsResizeHandler);window._gfsResizeHandler=null;}
+  try{if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();}catch(e){}
+  /* Move canvas wrap + analytics back to galaxyWrap */
+  const cw=document.getElementById('galaxyCanvasWrap');
+  const anEl=document.getElementById('galaxyAnalytics');
+  const gw=document.getElementById('galaxyWrap');
+  if(cw)gw.appendChild(cw);
+  if(anEl)gw.appendChild(anEl);
+  /* Remove overlay */
+  const ov=document.getElementById('galaxyFullscreenOv');
+  if(ov)ov.remove();
+  renderGalaxy();
+}
+
 /* ── Phase Pipeline: Black Hole Vortex Visualization ── */
 let _bhParts=null,_bhFlow=null,_bhKey='',_bhStars=null;
 function hexRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
 function showGalaxyPanelForPhase(key){if(window._bhPD){const p=window._bhPD.find(x=>x.key===key);if(p)showGalaxyPanel(p);}}
 function renderPhaseBlackHole(){
   document.getElementById('galaxyPanel').classList.remove('show');
-  const wrap=document.getElementById('galaxyWrap');wrap.classList.add('show');
+  if(!_galaxyFullscreenActive){const wrap=document.getElementById('galaxyWrap');wrap.classList.add('show');}
   /* Apply status & time filters to phase pipeline data */
   const baseSrc=_galaxyAllPhaseStudies||rawStudies;
   if(!baseSrc||baseSrc.length===0)return;
@@ -3472,10 +3610,14 @@ function placeNonOverlap(bodies,W,H){
 }
 
 function renderGalaxy(){
-  const show=document.getElementById('galaxyViewToggle').checked;
   const wrap=document.getElementById('galaxyWrap');
-  if(!show){wrap.classList.remove('show');if(galaxyAnimId){cancelAnimationFrame(galaxyAnimId);galaxyAnimId=null;}return;}
-  wrap.classList.add('show');
+  const mBtn=document.getElementById('galaxyMobileBtn');
+  if(!_galaxyFullscreenActive){
+    const show=document.getElementById('galaxyViewToggle').checked;
+    if(mBtn){if(show)mBtn.removeAttribute('style');else mBtn.style.display='none';}
+    if(!show){wrap.classList.remove('show');if(galaxyAnimId){cancelAnimationFrame(galaxyAnimId);galaxyAnimId=null;}return;}
+    wrap.classList.add('show');
+  }
   /* Phase Pipeline uses dedicated Black Hole renderer */
   if(galaxySortMode==='phase'){document.getElementById('galaxyAnalytics').classList.remove('show');renderPhaseBlackHole();return;}
   /* Analytics chart views */
