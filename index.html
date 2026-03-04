@@ -2519,7 +2519,8 @@ function renderPhaseBlackHole(){
   canvas.width=gW*dpr;canvas.height=gH*dpr;
   canvas.style.width=gW+'px';canvas.style.height=gH+'px';
   const ctx=canvas.getContext('2d');
-  const cx=gW/2-60,cy=gH/2,bhR=55,maxR=Math.min(gW,gH)*.58,tilt=.55;
+  const _isSmallScreen=_galaxyFullscreenActive||gW<900;
+  const cx=_isSmallScreen?gW/2:gW/2-60,cy=gH/2,bhR=_isSmallScreen?Math.min(45,gH*.1):55,maxR=Math.min(gW,gH)*(_isSmallScreen?.52:.58),tilt=.55;
   const spiralTurns=2.5,numArms=3;
   /* Zone radii — outer to inner, width ∝ count */
   const minW=18,gap=4,availR=maxR-bhR-20;
@@ -2662,7 +2663,7 @@ function renderPhaseBlackHole(){
       const lx2=cx+Math.cos(la)*p.mR;
       const ly2=cy+Math.sin(la)*p.mR*tilt;
       /* Background pill */
-      const tw=Math.max(110,p.bW*2.8),th=52;
+      const tw=_isSmallScreen?Math.max(80,p.bW*2.2):Math.max(110,p.bW*2.8),th=_isSmallScreen?40:52;
       ctx.fillStyle='rgba(0,0,0,.72)';
       ctx.beginPath();
       const rr3=8;ctx.moveTo(lx2-tw/2+rr3,ly2-th/2);ctx.lineTo(lx2+tw/2-rr3,ly2-th/2);ctx.quadraticCurveTo(lx2+tw/2,ly2-th/2,lx2+tw/2,ly2-th/2+rr3);ctx.lineTo(lx2+tw/2,ly2+th/2-rr3);ctx.quadraticCurveTo(lx2+tw/2,ly2+th/2,lx2+tw/2-rr3,ly2+th/2);ctx.lineTo(lx2-tw/2+rr3,ly2+th/2);ctx.quadraticCurveTo(lx2-tw/2,ly2+th/2,lx2-tw/2,ly2+th/2-rr3);ctx.lineTo(lx2-tw/2,ly2-th/2+rr3);ctx.quadraticCurveTo(lx2-tw/2,ly2-th/2,lx2-tw/2+rr3,ly2-th/2);ctx.closePath();
@@ -2670,13 +2671,15 @@ function renderPhaseBlackHole(){
       ctx.strokeStyle=p.color+'AA';ctx.lineWidth=2;ctx.stroke();
       /* Phase name */
       ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.font="bold 13px 'Segoe UI',sans-serif";ctx.fillStyle=p.color;
-      ctx.fillText(p.name,lx2,ly2-12);
+      ctx.font=_isSmallScreen?"bold 10px 'Segoe UI',sans-serif":"bold 13px 'Segoe UI',sans-serif";ctx.fillStyle=p.color;
+      ctx.fillText(p.name,lx2,ly2-(_isSmallScreen?8:12));
       /* Big count number */
-      ctx.font="bold 24px 'Press Start 2P',monospace";
+      ctx.font=_isSmallScreen?"bold 16px 'Press Start 2P',monospace":"bold 24px 'Press Start 2P',monospace";
       ctx.shadowColor=p.color;ctx.shadowBlur=12;
-      ctx.fillStyle='#fff';ctx.fillText(String(p.count),lx2,ly2+12);
+      ctx.fillStyle='#fff';ctx.fillText(String(p.count),lx2,ly2+(_isSmallScreen?6:12));
       ctx.shadowBlur=0;
+      /* Store label hit box for click detection */
+      p._lb={x:lx2-tw/2,y:ly2-th/2,w:tw,h:th};
     });
     /* ═══ Ratio bar (bottom of canvas, world space) ═══ */
     const barY=cy+maxR*tilt+35,barW=maxR*1.6,barH=20,barX=cx-barW/2;
@@ -2696,6 +2699,7 @@ function renderPhaseBlackHole(){
     ctx.fillText('PHASE RATIO ('+total+' TRIALS)',cx,barY-8);
     /* ═══ Study Type Breakdown (RIGHT margin, screen space) ═══ */
     ctx.restore();ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
+    if(!_isSmallScreen){/* Hide sidebar on small/fullscreen mobile */
     /* Count ALL study types, merge DRUG+BIOLOGICAL → Drug */
     const typeCounts={};
     const modalCounts={};
@@ -2768,7 +2772,9 @@ function renderPhaseBlackHole(){
       window._stClickRegions.push({x:stX,y:curY-2,w:stRightEdge-stX,h:barH2+4,type:'CATEGORY',category:cat,label:tc.label});
       curY+=20;
     });
+    }/* end sidebar guard */
     /* ═══ Search Conditions (LEFT upper, screen space) ═══ */
+    if(!_isSmallScreen){/* Hide search overlay on small screens (info in header) */
     const scX=10,scY=14;
     ctx.font="bold 10px 'Press Start 2P',monospace";ctx.textAlign='left';
     ctx.fillStyle='rgba(255,200,100,.9)';ctx.fillText('SEARCH',scX,scY);
@@ -2780,6 +2786,7 @@ function renderPhaseBlackHole(){
     ctx.fillText(`Status: ${statusFLabel} · Updated: ${timeFLabel}`,scX,scY+36);
     /* Phase/country info (cached outside draw loop) */
     ctx.fillText(`Phase: ${_cachedPhStr} · Country: ${_cachedCVal||'All'}`,scX,scY+52);
+    }/* end search overlay guard */
     ctx.restore();ctx.save();ctx.setTransform(dpr,0,0,dpr,0,0);
     /* Vignette (screen space) */
     const vig=ctx.createRadialGradient(gW/2,gH/2,gW*.25,gW/2,gH/2,gW*.7);
@@ -3982,25 +3989,28 @@ function renderGalaxy(){
         ctx.strokeStyle='rgba(255,255,255,.15)';ctx.lineWidth=.5;
         ctx.beginPath();ctx.moveTo(b.x-pulseR*2.5,b.y);ctx.lineTo(b.x+pulseR*2.5,b.y);ctx.stroke();
         ctx.beginPath();ctx.moveTo(b.x,b.y-pulseR*2.5);ctx.lineTo(b.x,b.y+pulseR*2.5);ctx.stroke();
-        /* ── Exclude zone: top-quarter arc of body ── */
+        /* ── Exclude zone: top-quarter arc of body (90°, 10:30~1:30) ── */
         if(['molecule','sponsor','country'].includes(mode)){
           const eR=pulseR+5;
-          /* Draw red translucent top-quarter wedge (from -π/2-π/4 to -π/2+π/4, i.e. 10:30~1:30) */
+          /* Red translucent top-quarter wedge */
           ctx.save();
-          ctx.fillStyle='rgba(255,50,50,.35)';
+          ctx.fillStyle='rgba(255,50,50,.45)';
           ctx.beginPath();ctx.moveTo(b.x,b.y);
           ctx.arc(b.x,b.y,eR,-Math.PI*0.75,-Math.PI*0.25);
           ctx.closePath();ctx.fill();
-          /* ✕ icon in the centre of that wedge */
-          const iconDist=eR*0.6;
-          const iconX=b.x+iconDist*Math.cos(-Math.PI/2);
-          const iconY=b.y+iconDist*Math.sin(-Math.PI/2);
-          const iconSz=Math.max(3.5,Math.min(6,pulseR*0.18));
-          ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=Math.max(1.5,pulseR*0.06);
+          /* Border arc for clarity */
+          ctx.strokeStyle='rgba(255,100,100,.6)';ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.arc(b.x,b.y,eR,-Math.PI*0.75,-Math.PI*0.25);ctx.stroke();
+          /* ✕ icon — larger & bolder */
+          const iconDist=eR*0.55;
+          const iconX=b.x;
+          const iconY=b.y-iconDist;
+          const iconSz=Math.max(4.5,Math.min(8,pulseR*0.24));
+          ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(2,pulseR*0.08);
           ctx.beginPath();ctx.moveTo(iconX-iconSz,iconY-iconSz);ctx.lineTo(iconX+iconSz,iconY+iconSz);ctx.stroke();
           ctx.beginPath();ctx.moveTo(iconX+iconSz,iconY-iconSz);ctx.lineTo(iconX-iconSz,iconY+iconSz);ctx.stroke();
           ctx.restore();
-          /* Hit area: store top-quarter zone info for click detection */
+          /* Hit area */
           b._xBtn={cx:b.x,cy:b.y,r:eR,zone:'topQuarter'};
         }
       }
@@ -4102,7 +4112,6 @@ function renderGalaxy(){
         const dx=wx2-b._xBtn.cx,dy=wy2-b._xBtn.cy;
         const dist=Math.hypot(dx,dy);
         if(dist<=b._xBtn.r){
-          /* Check if click is in top-quarter wedge: angle between -135° and -45° */
           const angle=Math.atan2(dy,dx);
           if(angle>=-Math.PI*0.75&&angle<=-Math.PI*0.25){
             galaxyExclude(b.name);return;
